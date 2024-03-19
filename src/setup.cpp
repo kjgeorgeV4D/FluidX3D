@@ -2,9 +2,8 @@
 
 
 
-#ifdef BENCHMARK
 #include "info.hpp"
-void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK, optionally FP16S or FP16C
+/*void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK, optionally FP16S or FP16C
 	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
 	uint mlups = 0u; {
 
@@ -33,9 +32,6 @@ void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK,
 	wait();
 #endif // Windows
 } /**/
-#endif // BENCHMARK
-
-
 
 /*void main_setup() { // 3D Taylor-Green vortices; required extensions in defines.hpp: INTERACTIVE_GRAPHICS
 	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
@@ -188,27 +184,38 @@ void main_setup() { // benchmark; required extensions in defines.hpp: BENCHMARK,
 	}
 } /**/
 
-
-
-/*void main_setup() { // cylinder in rectangular duct; required extensions in defines.hpp: VOLUME_FORCE, INTERACTIVE_GRAPHICS
-	// ################################################################## define simulation box size, viscosity and volume force ###################################################################
-	const float Re = 25000.0f;
-	const float D = 64.0f;
-	const float u = rsqrt(3.0f);
-	const float w=D, l=12.0f*D, h=3.0f*D;
-	const float nu = units.nu_from_Re(Re, D, u);
-	const float f = units.f_from_u_rectangular_duct(w, D, 1.0f, nu, u);
-	LBM lbm(to_uint(w), to_uint(l), to_uint(h), nu, 0.0f, f, 0.0f);
-	// ###################################################################################### define geometry ######################################################################################
+void main_setup() { // DEMO
+	const uint3 lbm_N = resolution(float3(1.0f, 6.0f, 1.5f), 32u); 
+	const float lbm_u = 0.1f;
+	const float lbm_width = 1.0f*(float)lbm_N.x;
+	const uint lbm_dt = 4u; 
+	const float si_T = 1.0f;
+	const float si_width = 1.0f;
+	const float si_u = 5.7;
+	const float si_nu=1.48E-1f, si_rho=1.225f;
+	print_info("Re = "+to_string(to_uint(units.si_Re(si_width, si_u, si_nu))));
+	units.set_m_kg_s(lbm_width, lbm_u, 1.0f, si_width, si_u, si_rho);
+	print_info(to_string(si_T, 3u)+" seconds = "+to_string(units.t(si_T))+" time steps");
+	LBM lbm(lbm_N, units.nu(si_nu));
+	Mesh* mesh = read_stl("/home/kjgeorge/run/stl/8-10-10-14-19.stl");
+	const float scale = 0.5f*lbm_width/mesh->get_bounding_box_size().x; 
+	mesh->scale(scale);
+	const float3 offset = lbm.center()-mesh->get_bounding_box_center(); 
+	mesh->translate(offset);
+	mesh->set_center(mesh->get_bounding_box_center());
+	lbm.voxelize_mesh_on_device(mesh);	
 	const uint Nx=lbm.get_Nx(), Ny=lbm.get_Ny(), Nz=lbm.get_Nz(); parallel_for(lbm.get_N(), [&](ulong n) { uint x=0u, y=0u, z=0u; lbm.coordinates(n, x, y, z);
-		lbm.u.y[n] = 0.1f*u;
-		if(cylinder(x, y, z, float3(lbm.center().x, 2.0f*D, lbm.center().z), float3(Nx, 0u, 0u), 0.5f*D)) lbm.flags[n] = TYPE_S;
-		if(x==0u||x==Nx-1u||z==0u||z==Nz-1u) lbm.flags[n] = TYPE_S; // x and z non periodic
-	}); // ####################################################################### run simulation, export images and data ##########################################################################
-	lbm.graphics.visualization_modes = VIS_FLAG_LATTICE|VIS_Q_CRITERION;
-	lbm.run();
+		if(lbm.flags[n]!=TYPE_S) lbm.u.y[n] = lbm_u;
+		if(x==0u||x==Nx-1u||y==0u||y==Ny-1u||z==0u||z==Nz-1u) lbm.flags[n] = TYPE_E; // all non periodic
+	}); 
+	lbm.run(0u); // initialize simulation
+	lbm.flags.write_device_to_vtk();
+	lbm.u.write_device_to_vtk();
+	while(lbm.get_t()<=units.t(si_T)) { // main simulation loop
+		lbm.run(lbm_dt); // run dt time steps
+	}
+	lbm.u.write_device_to_vtk();	
 } /**/
-
 
 
 /*void main_setup() { // Taylor-Couette flow; required extensions in defines.hpp: MOVING_BOUNDARIES, INTERACTIVE_GRAPHICS
